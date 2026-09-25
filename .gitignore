@@ -5,4 +5,6 @@ media/
 datasets/
 ml/trained_models/*.joblib
 .env
-*.DS_Store
+*.egg-info/
+staticfiles/
+analyzer/static/analyzer/samples/
