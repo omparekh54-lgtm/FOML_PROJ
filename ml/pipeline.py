@@ -13,7 +13,7 @@ used only to generate the human-readable reasoning text.
 All model artifacts are loaded once, lazily, and cached in-process
 (_MODEL_CACHE) so a Django dev/prod server doesn't hit disk on every
 request. Nothing here is Django-specific except the settings import, so
- the same module doubles as the entry point for offline testing.
+the same module doubles as the entry point for offline testing.
 """
 
 from __future__ import annotations
