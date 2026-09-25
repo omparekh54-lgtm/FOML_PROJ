@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -o errexit
+set -o pipefail
 
-python -m pip install --upgrade pip
+pip install --upgrade pip
 pip install -r requirements.txt
-python ml/training/build_dataset.py
-python manage.py migrate --noinput
+
+python -m ml.training.build_dataset --source .
+python -m ml.training.train_body_part_router
+python -m ml.training.train_abnormality_classifier --body-part chest
+python -m ml.training.train_abnormality_classifier --body-part bone
+
+rm -rf datasets
+python manage.py collectstatic --no-input
+python manage.py migrate --no-input
