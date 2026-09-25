@@ -1,1 +1,159 @@
-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>X-ray Lens</title><link rel="stylesheet" href="{% static 'analyzer/app.css' %}"></head><body><main class="wrap"><header><p class="eyebrow">FOML PROJECT</p><h1>X-ray Lens</h1><p class="lede">Upload a chest or bone X-ray for an experimental ML analysis. This is not a medical diagnosis.</p></header><section class="card"><form id="form" enctype="multipart/form-data"><label class="drop"><input id="image" name="image" type="file" accept="image/png,image/jpeg"><strong>Choose an X-ray</strong><span>JPG or PNG · up to {{ max_mb }} MB</span></label><button type="submit">Analyze image</button></form><div id="result" hidden></div></section><section class="grid"><div><h2>How it works</h2><ol><li>Checks whether the upload resembles an X-ray.</li><li>Routes it to chest or bone.</li><li>Runs a body-part-specific abnormality model.</li><li>Shows model confidence and a plain-language explanation.</li></ol></div><div><h2>Models</h2>{% for card in model_cards %}<article class="model"><b>{{ card.name }}</b><span>{{ card.task }}</span><strong>{{ card.headline }}</strong><small>{{ card.headline_label }}</small></article>{empty}<p>Models have not been trained yet.</p>{% endfor %}</div></section></main><script src="{% static 'analyzer/app.js' %}"></script></body></html>
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X-ray Lens · PCA X-ray Analyzer</title>
+  <meta name="description" content="Upload a chest or bone X-ray. PCA-based models identify the body part, flag possible abnormalities, and explain their reasoning in plain language.">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230f766e'/><path d='M9 9l14 14M23 9L9 23' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'analyzer/app.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8"/><path d="M9 9l14 14M23 9L9 23"/></svg>
+        </span>
+        <span>X-ray Lens</span>
+      </a>
+      <nav class="nav">
+        <a href="#analyze">Analyze</a>
+        <a href="#how">How it works</a>
+        <a href="#models">Models</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <p class="eyebrow">PCA · two-stage classification · explainable</p>
+      <h1>See what the model sees in an X-ray.</h1>
+      <p class="lede">Upload a chest or bone X-ray. The app works out which body part it is, checks it for signs of pneumonia or fracture, and shows you exactly which image patterns drove its answer.</p>
+    </section>
+
+    <section id="analyze" class="wrap workspace">
+      <div class="panel input-panel">
+        <label class="dropzone" id="dropzone" for="file-input">
+          <input type="file" id="file-input" accept="image/jpeg,image/png,image/bmp,image/tiff" hidden>
+          <div class="dz-empty" id="dz-empty">
+            <svg class="dz-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V13m0 0l-7 7m7-7l7 7" /><path d="M10 31v4a4 4 0 004 4h20a4 4 0 004-4v-4"/></svg>
+            <p class="dz-title">Drop an X-ray here</p>
+            <p class="dz-sub">or <span class="link">browse your files</span> · JPG, PNG up to {{ max_mb }} MB</p>
+          </div>
+          <img id="dz-preview" class="dz-preview" alt="Your uploaded X-ray" hidden>
+        </label>
+        <div class="dz-actions" id="dz-actions" hidden>
+          <span class="file-name" id="file-name"></span>
+          <button type="button" class="btn-ghost" id="reset-btn">Choose another</button>
+        </div>
+
+        {% if samples %}
+        <div class="samples">
+          <p class="samples-title">No X-ray handy? Try one the models have never seen:</p>
+          <div class="sample-grid">
+            {% for s in samples %}
+            <button type="button" class="sample" data-src="{% static s.file %}" data-label="{{ s.label }}">
+              <img src="{% static s.file %}" alt="" loading="lazy">
+              <span>{{ s.label }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <p class="privacy">Images are analysed in memory and never stored.</p>
+      </div>
+
+      <div class="panel result-panel" id="result-panel" aria-live="polite">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-illustration" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <h2>Your result will appear here</h2>
+          <ul class="empty-list">
+            <li><strong>Body part</strong> — chest or bone, with confidence</li>
+            <li><strong>Normal or abnormal</strong> — the model's read</li>
+            <li><strong>Why</strong> — which regions of the image mattered</li>
+            <li><strong>PCA view</strong> — your X-ray rebuilt from principal components</li>
+          </ul>
+        </div>
+
+        <div class="loading" id="loading" hidden>
+          <div class="scanner" aria-hidden="true"><div class="scan-line"></div></div>
+          <p id="loading-text">Projecting onto principal components…</p>
+        </div>
+
+        <div id="result" hidden></div>
+      </div>
+    </section>
+
+    <section id="how" class="wrap section">
+      <h2 class="section-title">How it works</h2>
+      <p class="section-lede">Every X-ray goes through the same five steps. Principal Component Analysis (PCA) is the core: it compresses 16,384 pixels into a handful of "pattern strengths" that the classifiers — and you — can reason about.</p>
+      <ol class="steps">
+        <li>
+          <span class="step-num">1</span>
+          <h3>Standardise</h3>
+          <p>Convert to grayscale, even out contrast (histogram equalisation), resize to 128×128.</p>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <h3>Compress with PCA</h3>
+          <p>Describe the image as a weighted mix of a few "eigen-X-rays" learned from training data.</p>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <h3>Route</h3>
+          <p>A router model decides chest or bone. Images PCA can't explain well are rejected as "not an X-ray".</p>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <h3>Classify</h3>
+          <p>A body-part-specific model with its own PCA space predicts normal vs. abnormal.</p>
+        </li>
+        <li>
+          <span class="step-num">5</span>
+          <h3>Explain</h3>
+          <p>Exact per-component contributions show what drove the call; a small decision tree spells out a step-by-step rule path.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="models" class="wrap section">
+      <h2 class="section-title">The models</h2>
+      <p class="section-lede">Measured on images held out from training. Chest images come from the pediatric pneumonia dataset; bone images are a mixed-region fracture dataset (hands, wrists, legs, spine and more), after removing rotated copies and duplicates.</p>
+      <div class="model-grid">
+        {% for card in model_cards %}
+        <article class="model-card">
+          <header>
+            <h3>{{ card.name }}</h3>
+            <p>{{ card.task }}</p>
+          </header>
+          <p class="model-headline"><span>{{ card.headline }}</span> {{ card.headline_label }}</p>
+          <dl>
+            {% for label, value in card.rows %}
+            <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+            {% endfor %}
+          </dl>
+        </article>
+        {% empty %}
+        <p>Models haven't been trained yet.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p><strong>Not a medical device.</strong> This is an educational machine-learning project. Its output is not a diagnosis and must not be used to make decisions about anyone's health. If you're worried about an X-ray, talk to a doctor or radiologist.</p>
+    </div>
+  </footer>
+
+  <script src="{% static 'analyzer/app.js' %}" defer></script>
+</body>
+</html>
